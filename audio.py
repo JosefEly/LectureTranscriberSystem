@@ -11,6 +11,9 @@ import mlx.core as mx
 
 aai.settings.api_key = os.environ["ASSEMBLYAI_API_KEY"]
 
+
+#This function sends the audio file at an input path to AssemblyAI for transcription, as opposed to using a slower but more private local model
+
 def assembly_transcribe(filepath, prompt=None):
 	config = aai.TranscriptionConfig(
 	language_detection=True,
@@ -26,6 +29,7 @@ def assembly_transcribe(filepath, prompt=None):
 		fulltext += "\n"
 		fulltext += "\n"
 	return(fulltext)
+
 
 def list_audio():
 	file_list = os.listdir(os.getcwd())
@@ -57,6 +61,7 @@ def ollama_chat(input):
 
 
 def qwen_transcribe(filepath, prompt=None):
+	filepath = "./" + filepath
 	model = load("mlx-community/Qwen3-ASR-1.7B-8bit", system_prompt=prompt, )
 	result = model.generate(filepath, language="English", chunk_duration=300.0, overlap_duration = 15.0)
 	fulltext = result.text
@@ -129,6 +134,7 @@ Below is the list of possible directories and their descriptions, followed by th
 		
 			if (response_text["directory_name"]) not in transcript_dirs:
 				response_text = None
+				count += 1
 				continue
 			if "summary" not in response_text:
 				response_text = None
@@ -140,7 +146,9 @@ Below is the list of possible directories and their descriptions, followed by th
 			count += 1
 			continue
 	return(response_text)
-def write_transcript(filename="Beverly 7:2:26.m4a"):
+
+# This function then returns the response_text object from ollama containing the target directory, transcript overview, and confidence score.
+def write_transcript(filename):
 
 	from mlx_audio.stt import load
 	model = load("mlx-community/parakeet-tdt-0.6b-v2")
@@ -160,6 +168,7 @@ def write_transcript(filename="Beverly 7:2:26.m4a"):
 	mx.clear_cache()
 
 	response_text = sort_transcript(fulltext)
+	# At this point, the function prints the directory the transcript has been sorted into based on an analysis of the first 600 seconds of the audio file.
 	print(response_text)
 	if response_text == None:
 		print("Ollama Error")
@@ -168,11 +177,14 @@ def write_transcript(filename="Beverly 7:2:26.m4a"):
 		qwen_text = assembly_transcribe(filename, response_text["summary"])
 	else:
 		qwen_text = qwen_transcribe(filename, response_text["summary"])
-	
+	#If the output folder is marked as public (containing non-sensitive data, like classes), it will be sent to an external service, which is more accurate, for transcription
+	#Otherwise it is transcribed locally.	
 	folderroot = re.sub(r"_.+","", response_text["directory_name"])
 	filewrite = folderroot + "_" + datetime.datetime.fromtimestamp(filestat.st_birthtime).strftime("%m-%d-%Y-%H-%M") + ".txt"
+	#This software writes the transcript to a text file in the following format: folder root name_(date of classification)(month-day-year-hour-minute).txt
 	transcripts = folderroot + "_transcripts"
 	audio = folderroot + "_audio"
+	# This program works by appending preprogrammed suffixes (audio or transcripts) to the directory root name, and moving the audio and transcripts to the folder with the appropriate suffixes
 	with open(f"{transcripts}/{filewrite}", "w") as text:
 		text.write(qwen_text)
 	shutil.move(filename, f"{audio}/{filename}")
@@ -182,3 +194,5 @@ def write_transcript(filename="Beverly 7:2:26.m4a"):
 	
 for item in list_audio():
 	write_transcript(item)
+
+# The program currently runs one pass over all the audio files inside the directory when run, which you can do after class.
