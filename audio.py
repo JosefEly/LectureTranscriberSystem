@@ -9,6 +9,18 @@ import shutil
 
 import os
 
+
+from ollama import chat
+"""
+response = chat(
+    model='qwen3.5:9b',
+    messages=[{'role': 'user', 'content': 'Hello!'}],
+)
+print(response.message.content)
+"""
+
+
+
 def list_audio():
 	file_list = os.listdir(os.getcwd())
 	file_audio = []
@@ -17,7 +29,50 @@ def list_audio():
 			file_audio.append(item)
 	return (file_audio)
 
-list_audio()
+def ollama_chat(input):
+	response = chat(
+        model='qwen3.5:9b',
+        messages=[{'role': 'user', 'content': input}],stream=False, options={
+        'num_ctx': 8192,      # Increase context window to 8k tokens
+        'num_predict': -1,     # Allow unlimited generation until it finishes
+    	"think": False
+	})
+	return response.message.content
+
+
+def sort_transcript(text):
+	directory_list = os.listdir(os.getcwd())	
+	transcript_dirs = [item for item in directory_list if "_transcripts" in item]
+	dirs_descriptions = {}
+	for item in transcript_dirs:
+		file = open(f"{item}/folder_description.txt")
+		contents = file.read()
+		dirs_descriptions[item] = contents
+	sorting_prompt = """
+
+You are taking in a conversation transcript (up to 10,000 characters, cut off if more) and a set of directory descriptions. Your goal is to sort the transcript into the correct directory among the listed directories, by picking the directory whose description is the strongest match for the content of the transcript. You will also provide a confidence score for your decision, which should be an integer between 1 and 10, where 1 is minimal confidence and 10 is maximal confidence. You should list your response in the Python dictionary format. The dictonary should be structured as followed:
+If the most likely directory is foo, and you have confidence 8, you should output:
+{"directory_name": "foo", "confidence_score": 8}
+Below is the list of possible directories and their descriptions, followed by the transcript to categorize.
+"""
+	for item in dirs_descriptions.keys():
+		sorting_prompt += "\nDirectory Name: \n"
+		sorting_prompt += item
+		sorting_prompt += "\nDirectiory Description\n"
+		sorting_prompt += dirs_descriptions[item]
+		sorting_prompt += "\n"
+	sorting_prompt += "Transcript\n"
+	sorting_prompt += text
+	print(sorting_prompt)
+	response_text = None
+	while response_text == None:
+		import ast
+		response_text = ast.literal_eval(ollama_chat(sorting_prompt))
+		if response_text["directory_name"] not in transcript_dirs:
+			response_text = None	
+			continue	
+	return response_text["directory_name"]		
+	
 def write_transcript(filename="Beverly 7:2:26.m4a", folder="Consulting_transcripts", audio_folder = "Consulting_audio"):
 	model = load("mlx-community/parakeet-tdt-0.6b-v2")
 
@@ -57,6 +112,8 @@ def write_transcript(filename="Beverly 7:2:26.m4a", folder="Consulting_transcrip
 		text.write(fulltext)
 	shutil.move(filename, f"{audio_folder}/{filename}")
 	print(filewrite)
+
+
 	
-for item in list_audio():
-	write_transcript(item)
+#for item in list_audio():
+	#write_transcript(item)
