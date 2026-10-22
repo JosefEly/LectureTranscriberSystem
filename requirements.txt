@@ -1,0 +1,6 @@
+mlx
+mlx-audio
+ollama
+assemblyai
+librosa<1.0  # 1.0 removed the audioread fallback, so it can't decode .m4a
+audioread
