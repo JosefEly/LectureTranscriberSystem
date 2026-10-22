@@ -15,7 +15,7 @@ from ollama import chat
 """
 response = chat(
     model='qwen3.5:9b',
-    messages=[{'role': 'user', 'content': 'Hello!'}],
+    messages=[{'role': 'user', 'content': 'Hello!'}], keep_alive=0
 )
 print(response.message.content)
 """
@@ -37,10 +37,31 @@ def ollama_chat(input):
         'num_ctx': 8192,      # Increase context window to 8k tokens
         'num_predict': -1,     # Allow unlimited generation until it finishes
     	"think": False
-	})
+	}, keep_alive=0
+	)
 	return response.message.content
 
-
+def qwen_transcribe(filepath, prompt=None):
+	model = load("mlx-community/Qwen3-ASR-1.7B-8bit", system_prompt=prompt, )
+	result = model.generate(filepath, language="English", chunk_duration=300.0, overlap_duration = 15.0)
+	fulltext = result.text
+	import gc
+	import mlx.core as mx
+	del model
+	gc.collect()
+	mx.clear_cache()	
+	sentences = re.split(r'(?<=[\.?!] )', fulltext)
+	fultext = ""
+	count = 0
+	for item in sentences:
+		count += len(item)
+		fulltext += item
+		if count > 750:
+			count = 0
+			fulltext += "\n"
+			fulltext += "\n"
+	return(fulltext)
+		
 def sort_transcript(text):
 	directory_list = os.listdir(os.getcwd())	
 	transcript_dirs = [item for item in directory_list if "_transcripts" in item and ".txt" not in item]
@@ -51,9 +72,11 @@ def sort_transcript(text):
 		dirs_descriptions[item] = contents
 	sorting_prompt = """
 
-You are taking in a conversation transcript (up to 10,000 characters, cut off if more) and a set of directory descriptions. Your goal is to sort the transcript into the correct directory among the listed directories, by picking the directory whose description is the strongest match for the content of the transcript. You will also provide a confidence score for your decision, which should be an integer between 1 and 10, where 1 is minimal confidence and 10 is maximal confidence. You should list your response in the Python dictionary format. The dictonary should be structured as followed:
-If the most likely directory is foo, and you have confidence 8, you should output:
-{"directory_name": "foo", "confidence_score": 8}
+You are taking in a conversation transcript (up to 10,000 characters, cut off if more) and a set of directory descriptions. Your goal is to sort the transcript into the correct directory among the listed directories, by picking the directory whose description is the strongest match for the content of the transcript. You will also provide a confidence score for your decision, which should be an integer between 1 and 10, where 1 is minimal confidence and 10 is maximal confidence. You should list your response in the Python dictionary format. After you have determined these things, provide a summary of the discussion topics during the transcript, and what words might be missed during transcription of the underlying audio file (technical terms, etc) based on your knowlege and which folder this transcript belongs in. This is intended for use by a speech-recognition model that accepts a system prompt. It should be less than 150 words.
+
+The dictonary should be structured as followed:
+I mean, I think the term for that is stereotypiIf the most likely directory is foo, and you have confidence 8, and you have generated a summary and term guide 'EXAMPLE SUMMARY TEXT', you should output:
+{"directory_name": "foo", "confidence_score": 8, "summary": "EXAMPLE SUMMARY TEXT"}
 Below is the list of possible directories and their descriptions, followed by the transcript to categorize.
 """
 	for item in dirs_descriptions.keys():
@@ -63,9 +86,8 @@ Below is the list of possible directories and their descriptions, followed by th
 		sorting_prompt += dirs_descriptions[item]
 		sorting_prompt += "\n"
 	sorting_prompt += "Transcript\n"
-	sorting_prompt += text[:6000]
+	sorting_prompt += text[:5000]
 	sorting_prompt += "\nEND OF TRANSCRIPT. Output the directory this transcript belongs in using the dictonary format I designated earlier."
-	print(sorting_prompt)
 	response_text = None
 	import ast
 	while response_text == None:
@@ -76,12 +98,14 @@ Below is the list of possible directories and their descriptions, followed by th
 			if (response_text["directory_name"]) not in transcript_dirs:
 				response_text = None
 				continue
+			if "summary" not in response_text:
+				response_text = None
+				continue
 		except:
 			print(response_text)
 			response_text = None
 			continue
-	beginning = re.sub(r"_.+","", response_text["directory_name"])
-	return(beginning)
+	return(response_text)
 """
 
 	while response_text == None:
@@ -136,12 +160,22 @@ def write_transcript(filename="Beverly 7:2:26.m4a", folder="Consulting_transcrip
 				fulltext += ("\n")
 		sentence_end = sentence.end
 	filestat = os.stat(filename)
-	folderroot = sort_transcript(fulltext)
+	import gc
+	import mlx.core as mx
+	del model
+	gc.collect()
+	mx.clear_cache()
+
+	response_text = sort_transcript(fulltext)
+	print(response_text)	
+	qwen_text = qwen_transcribe(filename, response_text["summary"])
+	
+	folderroot = re.sub(r"_.+","", response_text["directory_name"])
 	filewrite = folderroot + "_" + datetime.datetime.fromtimestamp(filestat.st_birthtime).strftime("%m-%d-%Y-%H-%M") + ".txt"
 	transcripts = folderroot + "_transcripts"
 	audio = folderroot + "_audio"
 	with open(f"{transcripts}/{filewrite}", "w") as text:
-		text.write(fulltext)
+		text.write(qwen_text)
 	shutil.move(filename, f"{audio}/{filename}")
 	print(filewrite)
 
