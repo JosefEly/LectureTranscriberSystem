@@ -51,15 +51,12 @@ def qwen_transcribe(filepath, prompt=None):
 	gc.collect()
 	mx.clear_cache()	
 	sentences = re.split(r'(?<=[\.?!] )', fulltext)
-	fultext = ""
+	fulltext = ""
 	count = 0
 	for item in sentences:
-		count += len(item)
 		fulltext += item
-		if count > 750:
-			count = 0
-			fulltext += "\n"
-			fulltext += "\n"
+		fulltext += "\n"
+		fulltext += "\n"	
 	return(fulltext)
 		
 def sort_transcript(text):
