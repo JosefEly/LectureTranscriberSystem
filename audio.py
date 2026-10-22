@@ -1,3 +1,4 @@
+import re
 from mlx_audio.stt import load
 #mlx-community/parakeet-tdt-0.6b-v3
 # Load the multilingual v3 model
@@ -42,7 +43,7 @@ def ollama_chat(input):
 
 def sort_transcript(text):
 	directory_list = os.listdir(os.getcwd())	
-	transcript_dirs = [item for item in directory_list if "_transcripts" in item]
+	transcript_dirs = [item for item in directory_list if "_transcripts" in item and ".txt" not in item]
 	dirs_descriptions = {}
 	for item in transcript_dirs:
 		file = open(f"{item}/folder_description.txt")
@@ -62,17 +63,46 @@ Below is the list of possible directories and their descriptions, followed by th
 		sorting_prompt += dirs_descriptions[item]
 		sorting_prompt += "\n"
 	sorting_prompt += "Transcript\n"
-	sorting_prompt += text
+	sorting_prompt += text[:6000]
+	sorting_prompt += "\nEND OF TRANSCRIPT. Output the directory this transcript belongs in using the dictonary format I designated earlier."
 	print(sorting_prompt)
 	response_text = None
+	import ast
+	while response_text == None:
+		try:
+			response_text = (ollama_chat(sorting_prompt))
+			response_text = re.search("{[^}]+}", response_text).group()
+			response_text = ast.literal_eval(response_text)
+			if (response_text["directory_name"]) not in transcript_dirs:
+				response_text = None
+				continue
+		except:
+			print(response_text)
+			response_text = None
+			continue
+	beginning = re.sub(r"_.+","", response_text["directory_name"])
+	return(beginning)
+"""
+
 	while response_text == None:
 		import ast
-		response_text = ast.literal_eval(ollama_chat(sorting_prompt))
-		if response_text["directory_name"] not in transcript_dirs:
-			response_text = None	
-			continue	
-	return response_text["directory_name"]		
-	
+		response_text = (ollama_chat(sorting_prompt))
+		print(response_text)
+		
+		try:
+			response_text = re.search("{[^}]+}", response_text).group()
+			print(response_text)
+			response_text = ast.literal_eval(response_text)
+			
+			if response_text["directory_name"] not in transcript_dirs:
+                        	response_text = None
+                        	continue
+		except:
+			continue
+"""
+
+#file = open("Consulting_transcripts_07-16-2026-19-46.txt")
+#sort_transcript(file.read()[:5000])	
 def write_transcript(filename="Beverly 7:2:26.m4a", folder="Consulting_transcripts", audio_folder = "Consulting_audio"):
 	model = load("mlx-community/parakeet-tdt-0.6b-v2")
 
@@ -105,15 +135,17 @@ def write_transcript(filename="Beverly 7:2:26.m4a", folder="Consulting_transcrip
 			if gap > 0.5:
 				fulltext += ("\n")
 		sentence_end = sentence.end
-	print(fulltext)
 	filestat = os.stat(filename)
-	filewrite = folder + "_" + datetime.datetime.fromtimestamp(filestat.st_birthtime).strftime("%m-%d-%Y-%H-%M") + ".txt"
-	with open(f"{folder}/{filewrite}", "w") as text:
+	folderroot = sort_transcript(fulltext)
+	filewrite = folderroot + "_" + datetime.datetime.fromtimestamp(filestat.st_birthtime).strftime("%m-%d-%Y-%H-%M") + ".txt"
+	transcripts = folderroot + "_transcripts"
+	audio = folderroot + "_audio"
+	with open(f"{transcripts}/{filewrite}", "w") as text:
 		text.write(fulltext)
-	shutil.move(filename, f"{audio_folder}/{filename}")
+	shutil.move(filename, f"{audio}/{filename}")
 	print(filewrite)
 
 
 	
-#for item in list_audio():
-	#write_transcript(item)
+for item in list_audio():
+	write_transcript(item)
